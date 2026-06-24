@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Structural Engineering Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        html, body, #root { min-height: 100%; margin: 0; padding: 0; background-color: #f3f4f6; }
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        // Helper function to parse profile data
+        const parseProfileData = (rawData) => {
+            const lines = rawData.trim().split('\n');
+            const dataLines = lines.slice(2);
+            const headers = lines[0].split('|').map(h => h.trim()).filter(h => h !== '');
+            const pIdx = headers.indexOf('Profile'), wyIdx = headers.indexOf('Wel,y'), wpyIdx = headers.indexOf('Wpl,y');
+
+            if (pIdx === -1) return [{ name: 'Error loading profiles', massPerMeter: 0 }];
+
+            const profiles = dataLines.map(line => {
+                const vals = line.split('|').map(v => v.trim()).filter(v => v !== '');
+                if (vals.length < 3) return null;
+
+                const pName = vals[pIdx], Wel_y = parseFloat(vals[wyIdx]), Wpl_y = parseFloat(vals[wpyIdx]);
+                let h = 0, b = 0, t = 0, massPerMeter = 0, Iy = 0;
+                
+                const dims = pName.match(/(\d+(\.\d+)?)/g);
+                if (dims && dims.length >= 3) {
+                    h = parseFloat(dims[0]); b = parseFloat(dims[1]); t = parseFloat(dims[2]);
+                    massPerMeter = (4 * h * t - 4 * t * t) * 0.00785;
+                    Iy = Wel_y * (h / 20); 
+                }
+
+                return {
+                    name: `SHS ${pName}`, massPerMeter: massPerMeter || 0, h: h || 0, b: b || 0, t: t || 0, A: 0,
+                    Iy: Iy || 0, Wel_y: Wel_y || 0, Wpl_y: Wpl_y || 0, Iz: Iy || 0, Wel_z: Wel_y || 0, Wpl_z: Wpl_y || 0, Vpl_Rd_z: 0,
+                };
+            }).filter(p => p !== null);
+
+            return [{ name: 'Select Profile', massPerMeter: 0, h:0, b:0, t:0, A:0, Iy:0, Wel_y:0, Wpl_y:0, Iz:0, Wel_z:0, Wpl_z:0, Vpl_Rd_z:0 }, ...profiles];
+        };
+
+        const rawSHSData = `
+        | Profile | Wel,y | Wpl,y |
+        |:---|---:|---:|
+        | 40 x 40 x 3.2 | 5.11 | 6.28 |
+        | 40 x 40 x 3.6 | 5.54 | 6.88 |
+        | 40 x 40 x 4.0 | 5.91 | 7.44 |
+        | 40 x 40 x 5.0 | 6.68 | 8.66 |
+        | 40 x 40 x 6.3 | 7.34 | 9.90 |
+        | 50 x 50 x 3.2 | 8.49 | 10.2 |
+        | 50 x 50 x 3.6 | 9.27 | 11.3 |
+        | 50 x 50 x 4.0 | 9.99 | 12.3 |
+        | 50 x 50 x 5.0 | 11.6 | 14.5 |
+        | 50 x 50 x 6.3 | 13.1 | 17.0 |
+        | 50 x 50 x 8.0 | 14.4 | 19.5 |
+        | 60 x 60 x 3.2 | 12.7 | 15.2 |
+        | 60 x 60 x 3.6 | 14.0 | 16.8 |
+        | 60 x 60 x 4.0 | 15.1 | 18.3 |
+        | 60 x 60 x 5.0 | 17.8 | 21.9 |
+        | 60 x 60 x 6.3 | 20.5 | 26.0 |
+        | 60 x 60 x 8.0 | 23.2 | 30.4 |
+        | 70 x 70 x 3.2 | 17.8 | 21.0 |
+        | 70 x 70 x 3.6 | 19.6 | 23.3 |
+        | 70 x 70 x 4.0 | 21.3 | 25.5 |
+        | 70 x 70 x 5.0 | 25.3 | 30.8 |
+        | 70 x 70 x 6.3 | 29.7 | 36.9 |
+        | 70 x 70 x 8.0 | 34.2 | 43.8 |
+        | 70 x 70 x 10.0 | 38.0 | 50.3 |
+        | 80 x 80 x 3.2 | 23.7 | 27.9 |
+        | 80 x 80 x 3.6 | 26.2 | 31.0 |
+        | 80 x 80 x 4.0 | 28.6 | 34.0 |
+        | 80 x 80 x 5.0 | 34.2 | 41.1 |
+        | 80 x 80 x 6.3 | 40.5 | 49.7 |
+        | 80 x 80 x 8.0 | 47.3 | 59.5 |
+        | 80 x 80 x 10.0 | 53.5 | 69.3 |
+        | 90 x 90 x 3.6 | 33.8 | 39.7 |
+        | 90 x 90 x 4.0 | 37.0 | 43.6 |
+        | 90 x 90 x 5.0 | 44.4 | 53.0 |
+        | 90 x 90 x 6.3 | 53.0 | 64.3 |
+        | 90 x 90 x 8.0 | 62.6 | 77.6 |
+        | 90 x 90 x 10.0 | 71.6 | 91.3 |
+        | 100 x 100 x 3.6 | 42.3 | 49.5 |
+        | 100 x 100 x 4.0 | 46.4 | 54.4 |
+        | 100 x 100 x 5.0 | 55.9 | 66.4 |
+        | 100 x 100 x 6.3 | 67.1 | 80.9 |
+        | 100 x 100 x 8.0 | 79.9 | 98.2 |
+        | 100 x 100 x 10.0 | 92.4 | 116 |
+        | 120 x 120 x 4.0 | 68.4 | 79.7 |
+        | 120 x 120 x 5.0 | 83.0 | 97.6 |
+        | 120 x 120 x 6.3 | 100 | 120 |
+        | 120 x 120 x 8.0 | 121 | 146 |
+        | 120 x 120 x 10.0 | 142 | 175 |
+        | 120 x 120 x 12.5 | 164 | 207 |
+        | 140 x 140 x 5.0 | 115 | 135 |
+        | 140 x 140 x 6.3 | 141 | 166 |
+        | 140 x 140 x 8.0 | 171 | 204 |
+        | 140 x 140 x 10.0 | 202 | 246 |
+        | 140 x 140 x 12.5 | 236 | 293 |
+        | 140 x 140 x 14.2 | 256 | 322 |
+        | 140 x 140 x 16.0 | 274 | 350 |
+        | 150 x 150 x 4.0 | 109 | 127 |
+        | 150 x 150 x 5.0 | 134 | 156 |
+        | 150 x 150 x 6.3 | 163 | 192 |
+        | 150 x 150 x 8.0 | 199 | 237 |
+        | 150 x 150 x 10.0 | 236 | 286 |
+        | 150 x 150 x 12.5 | 277 | 342 |
+        | 150 x 150 x 14.2 | 302 | 377 |
+        | 150 x 150 x 16.0 | 324 | 411 |
+        `;
+
+        // Reusable UI Components
+        const Input = ({ label, val, set, title, step="1", min, ph }) => (
+            <div className="flex flex-col w-full">
+                <label className="text-xs font-medium text-gray-700 truncate" title={title}>{label}</label>
+                <input type="number" value={val} onChange={e => set(Number(e.target.value))} step={step} min={min} placeholder={ph}
+                       className="p-1.5 text-sm border border-gray-300 rounded focus:ring-blue-500 focus:border-blue-500" />
+            </div>
+        );
+        const Checkbox = ({ label, checked, set }) => (
+            <div className="flex items-center">
+                <input type="checkbox" checked={checked} onChange={e => set(e.target.checked)} className="h-3 w-3 text-blue-600 rounded" />
+                <label className="ml-1.5 text-xs font-medium text-gray-700">{label}</label>
+            </div>
+        );
+        const Radio = ({ label, name, val, current, set, color = "blue" }) => (
+            <label className="inline-flex items-center mt-1 mr-3 block">
+                <input type="radio" className={`form-radio h-3 w-3 text-${color}-600`} name={name} value={val} checked={current === val} onChange={() => set(val)} />
+                <span className="ml-1.5 text-xs text-gray-700">{label}</span>
+            </label>
+        );
+        const CollapsibleSection = ({ title, children, isOpen, toggleOpen }) => (
+            <div className="border border-gray-200 rounded mb-2 shadow-sm">
+                <button className="w-full flex justify-between p-2 bg-gray-50 hover:bg-gray-100 font-semibold text-sm text-gray-700 rounded-t border-b border-gray-200" onClick={() => toggleOpen(!isOpen)}>
+                    {title}<span className="text-xs">{isOpen ? '▲' : '▼'}</span>
+                </button>
+                {isOpen && <div className="p-2 bg-white">{children}</div>}
+            </div>
+        );
+
+        const BeamAnalysisAndDesignPage = ({ allBeamsLoadData, selectedProfile, setSelectedProfile, ALL_PROFILES, liveLoadFactor, setLiveLoadFactor, deadLoadFactor, setDeadLoadFactor, fy, setFy, calculateBeamForces, loadCalculationMode, steelThickness, setSteelThickness, supportCondition, blueSupportWidth, setCurrentPage, EPSILON, calculateBeamDeflection }) => {
+            const analysisResults = React.useMemo(() => {
+                if (!allBeamsLoadData || allBeamsLoadData.length === 0) return null;
+                let criticalBeam = null, maxFactoredMoment = -1;
+                const allResults = [];
+
+                allBeamsLoadData.forEach(beamData => {
+                    const span = beamData.span;
+                    const basePointLoads = beamData.loads ? beamData.loads.map(l => ({ ...l, x: l.x + (blueSupportWidth / 2) })) : [];
+                    const baseUdlData = beamData.udl;
+                    const baseSelfWeight = (selectedProfile && selectedProfile.massPerMeter > EPSILON) ? (selectedProfile.massPerMeter * 9.81) / 1000 : 0;
+
+                    // Isolate DL and LL point loads
+                    const pointLoadsDL = basePointLoads.map(l => ({ ...l, load: l.spacer_load || 0 }));
+                    const pointLoadsLL = basePointLoads.map(l => ({ ...l, load: l.sheet_load || 0 }));
+
+                    // Service Forces Calculation
+                    const serviceForces = calculateBeamForces(supportCondition, span, basePointLoads, baseUdlData, baseSelfWeight);
+                    
+                    const factoredPointLoads = basePointLoads.map(l => ({ ...l, load: ((l.spacer_load || 0) * deadLoadFactor) + ((l.sheet_load || 0) * liveLoadFactor) }));
+                    const factoredUdlData = baseUdlData ? { ...baseUdlData, udl: baseUdlData.udl * liveLoadFactor } : null;
+                    const factoredSelfWeight = baseSelfWeight * deadLoadFactor;
+                    const factoredForces = calculateBeamForces(supportCondition, span, factoredPointLoads, factoredUdlData, factoredSelfWeight);
+
+                    // Component Breakdown
+                    const serviceDL = calculateBeamForces(supportCondition, span, pointLoadsDL, null, baseSelfWeight);
+                    const serviceLL = calculateBeamForces(supportCondition, span, pointLoadsLL, baseUdlData, 0);
+                    const factoredDL = calculateBeamForces(supportCondition, span, pointLoadsDL.map(l => ({...l, load: l.load * deadLoadFactor})), null, factoredSelfWeight);
+                    const factoredLL = calculateBeamForces(supportCondition, span, pointLoadsLL.map(l => ({...l, load: l.load * liveLoadFactor})), factoredUdlData, 0);
+
+                    const result = {
+                        name: beamData.name, serviceReactions: { RA: serviceForces.RA, RB: serviceForces.RB },
+                        factoredReactions: { RA: factoredForces.RA, RB: factoredForces.RB },
+                        maxMoment: factoredForces.maxMoment, maxShear: factoredForces.maxShear,
+                        deflectionLoads: { pointLoads: basePointLoads, udlData: baseUdlData, selfWeight: baseSelfWeight },
+                        breakdown: { serviceDL, serviceLL, factoredDL, factoredLL }
+                    };
+
+                    allResults.push(result);
+                    if (factoredForces.maxMoment > maxFactoredMoment) {
+                        maxFactoredMoment = factoredForces.maxMoment; criticalBeam = result;
+                    }
+                });
+
+                let maxThickness = 0, limitingFactor = '';
+                const t_current = Number(steelThickness);
+
+                if (selectedProfile && selectedProfile.name !== 'Select Profile' && t_current > 0) {
+                    const plasticMomentResistance = (selectedProfile.Wpl_y * fy) / 1000;
+                    const E_MPa = 210000, I_cm4 = selectedProfile.Iy || 0;
+
+                    const checkCapacity = (testThickness) => {
+                        const tRatio = testThickness / t_current;
+                        for (const beamData of allBeamsLoadData) {
+                            const span = beamData.span;
+                            const basePointLoads = beamData.loads ? beamData.loads.map(l => ({ ...l, x: l.x + (blueSupportWidth / 2) })) : [];
+                            const baseUdlData = beamData.udl;
+                            const baseSelfWeight = (selectedProfile.massPerMeter > EPSILON) ? (selectedProfile.massPerMeter * 9.81) / 1000 : 0;
+
+                            const testPointLoadsService = basePointLoads.map(l => ({ ...l, load: (l.spacer_load || 0) + ((l.sheet_load || 0) * tRatio) }));
+                            const testUdlData = baseUdlData ? { ...baseUdlData, udl: baseUdlData.udl * tRatio } : null;
+
+                            const factoredPointLoads = basePointLoads.map(l => ({ ...l, load: ((l.spacer_load || 0) * deadLoadFactor) + ((l.sheet_load || 0) * tRatio * liveLoadFactor) }));
+                            const factoredUdlData = testUdlData ? { ...testUdlData, udl: testUdlData.udl * liveLoadFactor } : null;
+                            const factoredSelfWeight = baseSelfWeight * deadLoadFactor;
+
+                            const factoredForces = calculateBeamForces(supportCondition, span, factoredPointLoads, factoredUdlData, factoredSelfWeight);
+                            if (factoredForces.maxMoment > plasticMomentResistance) return { passed: false, limit: 'Moment Capacity' };
+
+                            const defl = calculateBeamDeflection(supportCondition, span, testPointLoadsService, testUdlData, baseSelfWeight, E_MPa, I_cm4);
+                            if (Math.abs(defl) > span / 200) return { passed: false, limit: 'Deflection Limit (L/200)' };
+                        }
+                        return { passed: true };
+                    };
+
+                    let low = 0, high = 1000;
+                    if (!checkCapacity(0).passed) {
+                        maxThickness = 0; limitingFactor = checkCapacity(0).limit + ' (Fails under self-weight)';
+                    } else {
+                        while (checkCapacity(high).passed && high < 100000) { low = high; high *= 2; }
+                        for (let i = 0; i < 40; i++) {
+                            const mid = (low + high) / 2;
+                            const res = checkCapacity(mid);
+                            if (res.passed) { maxThickness = mid; low = mid; } 
+                            else { limitingFactor = res.limit; high = mid; }
+                        }
+                    }
+                } else if (t_current <= 0) limitingFactor = 'Current thickness must be > 0';
+
+                return { allResults, criticalBeam, maxThickness, limitingFactor };
+            }, [allBeamsLoadData, selectedProfile, liveLoadFactor, deadLoadFactor, fy, supportCondition, blueSupportWidth, EPSILON, calculateBeamForces, calculateBeamDeflection, steelThickness]);
+
+            const criticalBeam = analysisResults?.criticalBeam;
+            const allResults = analysisResults?.allResults || [];
+            const E_MPa = 210000, I_cm4 = selectedProfile.Iy || 0;
+            const beamSpan = criticalBeam ? allBeamsLoadData.find(b => b.name === criticalBeam.name).span : 0;
+            const maxDeflection = criticalBeam ? calculateBeamDeflection(
+                supportCondition, beamSpan, criticalBeam.deflectionLoads.pointLoads, 
+                criticalBeam.deflectionLoads.udlData, criticalBeam.deflectionLoads.selfWeight, E_MPa, I_cm4
+            ) : 0;
+
+            const allowableDeflection = beamSpan / 200;
+            const plasticMomentResistance = (selectedProfile.Wpl_y * fy) / 1000;
+            const utilizationRatio = (plasticMomentResistance > EPSILON && criticalBeam) ? (criticalBeam.maxMoment / plasticMomentResistance) * 100 : 0;
+            const tClass = "px-3 py-2 text-center border-r whitespace-nowrap text-sm";
+
+            return (
+                <div className="flex flex-col items-center justify-start w-full min-h-screen bg-gray-100 p-2 font-sans antialiased overflow-y-auto">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-2">Beam Analysis and Design</h2>
+                    {criticalBeam ? (
+                        <div className="bg-white p-6 rounded-lg shadow-lg text-center w-full max-w-6xl mt-4 mb-10">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 my-4 p-4 border rounded-lg bg-gray-50">
+                                <Input label="Steel Yield (Fy) [MPa]:" val={fy} set={setFy} step="10" />
+                                <Input label="Dead Load Factor (γG):" val={deadLoadFactor} set={setDeadLoadFactor} step="0.05" />
+                                <Input label="Live Load Factor (γQ):" val={liveLoadFactor} set={setLiveLoadFactor} step="0.05" />
+                            </div>
+
+                            <div className="mb-6 flex flex-col items-center">
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Select Steel Profile for Design:</label>
+                                <select value={selectedProfile.name} onChange={(e) => setSelectedProfile(ALL_PROFILES.find(p => p.name === e.target.value))} className="mt-1 block w-full md:w-2/3 p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                                    {ALL_PROFILES.map(profile => (<option key={profile.name} value={profile.name}>{profile.name} (Wpl,y: {profile.Wpl_y} cm³)</option>))}
+                                </select>
+                            </div>
+
+                            <div className="border-b pb-6 mb-6">
+                                <h3 className="text-xl font-bold text-gray-800 mb-2">Design Checks (Critical Beam: <span className="text-blue-600">{criticalBeam.name}</span>)</h3>
+                                <div className="mt-4 text-lg font-bold text-gray-800 space-y-2">
+                                    <p>Max Factored Bending Moment (M_Ed): <span className="text-red-600">{(criticalBeam.maxMoment || 0).toFixed(2)} kNm</span></p>
+                                    {selectedProfile.name !== 'Select Profile' && <p>Plastic Moment Resistance (Mpl,Rd,y): <span className="text-green-600">{plasticMomentResistance.toFixed(2)} kNm</span></p>}
+                                </div>
+                                {selectedProfile.name !== 'Select Profile' && (
+                                    <div className="mt-4 space-y-3 text-lg">
+                                        <p className={`p-3 rounded-md ${criticalBeam.maxMoment <= plasticMomentResistance ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                            <strong>Moment Check:</strong> {criticalBeam.maxMoment.toFixed(2)} &le; {plasticMomentResistance.toFixed(2)} - <strong>{criticalBeam.maxMoment <= plasticMomentResistance ? 'PASS' : 'FAIL'}</strong>
+                                        </p>
+                                        <p className={`p-3 rounded-md ${Math.abs(maxDeflection) <= allowableDeflection ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                            <strong>Deflection Check:</strong> {Math.abs(maxDeflection).toFixed(2)} &le; {allowableDeflection.toFixed(2)} - <strong>{Math.abs(maxDeflection) <= allowableDeflection ? 'PASS' : 'FAIL'}</strong>
+                                        </p>
+                                        <div className="flex items-center justify-center p-3 rounded-md bg-blue-100 text-blue-800">
+                                            <strong className="mr-4">Capacity Utilization Ratio:</strong> <span className="font-mono mr-4">{utilizationRatio.toFixed(2)}%</span>
+                                            <div className="flex items-center">
+                                                <label className="text-sm font-medium text-gray-700 mr-2">Sheet Thickness (mm):</label>
+                                                <input type="number" min="1" max="50" step="0.1" value={steelThickness} onChange={(e) => setSteelThickness(Number(e.target.value))} className="p-1 border border-gray-300 rounded-md w-24" />
+                                            </div>
+                                        </div>
+                                        <div className={`flex flex-col sm:flex-row items-center justify-center p-3 rounded-md border mt-2 ${analysisResults?.maxThickness > 0 ? 'bg-purple-100 text-purple-800 border-purple-300' : 'bg-gray-100 text-gray-600 border-gray-300'}`}>
+                                            <strong className="mr-2">Max Allowable Sheet Thickness:</strong> 
+                                            {analysisResults?.maxThickness > 0 ? <><span className="font-mono font-bold text-xl mr-2">{analysisResults.maxThickness.toFixed(2)} mm</span><span className="text-sm">({analysisResults.limitingFactor})</span></> : <span className="text-sm">Cannot be calculated ({analysisResults?.limitingFactor})</span>}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="mb-8">
+                                <h3 className="text-xl font-bold text-gray-800 mb-4">Total Reactions Summary</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 border">
+                                        <thead className="bg-gray-100">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase border-r">Beam Name</th>
+                                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase border-r" colSpan="2">Service Total Reactions [kN]</th>
+                                                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase" colSpan="2">Factored Total Reactions (ULS) [kN]</th>
+                                            </tr>
+                                            <tr>
+                                                <th className="border-r"></th>
+                                                <th className="px-4 py-2 text-xs text-gray-500 uppercase text-center border-r">Supp A (L)</th>
+                                                <th className="px-4 py-2 text-xs text-gray-500 uppercase text-center border-r">Supp B (R)</th>
+                                                <th className="px-4 py-2 text-xs text-gray-500 uppercase text-center border-r">Supp A (L)</th>
+                                                <th className="px-4 py-2 text-xs text-gray-500 uppercase text-center">Supp B (R)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {allResults.map((res) => (
+                                                <tr key={res.name} className={res.name === criticalBeam.name ? "bg-blue-50" : ""}>
+                                                    <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900 border-r">{res.name} {res.name === criticalBeam.name && <span className="text-xs text-red-600 ml-1">(Critical)</span>}</td>
+                                                    <td className={tClass}>{res.serviceReactions.RA.toFixed(2)}</td>
+                                                    <td className={tClass}>{res.serviceReactions.RB.toFixed(2)}</td>
+                                                    <td className={tClass + " font-bold"}>{res.factoredReactions.RA.toFixed(2)}</td>
+                                                    <td className={"px-3 py-2 text-center whitespace-nowrap text-sm font-bold"}>{res.factoredReactions.RB.toFixed(2)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 className="text-xl font-bold text-gray-800 mb-4">Reactions Breakdown (By Load Type)</h3>
+                                <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 border text-sm">
+                                        <thead className="bg-gray-100">
+                                            <tr>
+                                                <th rowSpan="2" className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase border-r">Beam</th>
+                                                <th colSpan="2" className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase border-r border-b bg-gray-200">Service DL (kN)</th>
+                                                <th colSpan="2" className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase border-r border-b bg-gray-200">Service LL (kN)</th>
+                                                <th colSpan="2" className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase border-r border-b bg-gray-200">Factored DL (kN)</th>
+                                                <th colSpan="2" className="px-3 py-2 text-center text-xs font-medium text-gray-600 uppercase border-b bg-gray-200">Factored LL (kN)</th>
+                                            </tr>
+                                            <tr>
+                                                {Array(4).fill(['Supp A', 'Supp B']).flat().map((lbl, i) => <th key={i} className={`px-2 py-1 text-center text-xs text-gray-500 ${i !== 7 ? 'border-r' : ''}`}>{lbl}</th>)}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {allResults.map((res) => (
+                                                <tr key={res.name} className="hover:bg-gray-50">
+                                                    <td className="px-3 py-3 whitespace-nowrap font-medium text-gray-900 border-r">{res.name}</td>
+                                                    <td className={tClass}>{res.breakdown.serviceDL.RA.toFixed(2)}</td><td className={tClass}>{res.breakdown.serviceDL.RB.toFixed(2)}</td>
+                                                    <td className={tClass}>{res.breakdown.serviceLL.RA.toFixed(2)}</td><td className={tClass}>{res.breakdown.serviceLL.RB.toFixed(2)}</td>
+                                                    <td className={tClass}>{res.breakdown.factoredDL.RA.toFixed(2)}</td><td className={tClass}>{res.breakdown.factoredDL.RB.toFixed(2)}</td>
+                                                    <td className={tClass}>{res.breakdown.factoredLL.RA.toFixed(2)}</td><td className="px-2 py-3 text-center text-gray-800">{res.breakdown.factoredLL.RB.toFixed(2)}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    ) : (<p className="text-gray-600 mt-4">No beam analysis data available.</p>)}
+                    <button onClick={() => setCurrentPage('input')} className="mt-6 px-6 py-3 bg-red-600 text-white font-semibold rounded-md shadow-md hover:bg-red-700 transition">Back to Input Panel</button>
+                </div>
+            );
+        };
+
+        const LandscapeDrawingPage = ({ drawPlan, showSteelSheet, loadCalculationMode, beamConfiguration, steelSheetActualLength, steelSheetActualWidth, setCurrentPage, hasRearBeam, rearBeamOffset, hasFrontBeam, frontBeamOffset }) => {
+            const containerRef = React.useRef(null);
+            const landscapeCanvasRef = React.useRef(null);
+
+            React.useEffect(() => {
+                const canvas = landscapeCanvasRef.current, container = containerRef.current;
+                if (!canvas || !container) return;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+
+                const setDimsAndDraw = () => {
+                    const rect = container.getBoundingClientRect();
+                    canvas.width = rect.width * window.devicePixelRatio; canvas.height = rect.height * window.devicePixelRatio;
+                    canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`;
+                    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+                    drawPlan(ctx, canvas, true, showSteelSheet, loadCalculationMode, 0.8);
+                };
+
+                setDimsAndDraw();
+                window.addEventListener('resize', setDimsAndDraw);
+                return () => window.removeEventListener('resize', setDimsAndDraw);
+            }, [drawPlan, showSteelSheet, loadCalculationMode, beamConfiguration, hasRearBeam, rearBeamOffset, hasFrontBeam, frontBeamOffset]);
+
+            return (
+                <div className="fixed inset-0 z-50 flex flex-col bg-gray-100 font-sans antialiased overflow-hidden">
+                    <div className="flex justify-between items-center bg-white border-b border-gray-300 px-4 py-2 shrink-0 shadow-sm z-10">
+                        <h2 className="text-lg font-bold text-gray-800 m-0">Detailed Storage Plan (Landscape)</h2>
+                        <button onClick={() => setCurrentPage('input')} className="px-4 py-1.5 bg-red-600 text-white text-sm font-semibold rounded shadow hover:bg-red-700 transition">Back to Input</button>
+                    </div>
+                    <div className="flex-1 w-full p-2 flex flex-col min-h-0">
+                        <div ref={containerRef} className="relative w-full flex-1 bg-white border border-gray-300 rounded shadow-inner overflow-hidden">
+                            <canvas ref={landscapeCanvasRef} className="absolute inset-0 w-full h-full" style={{ display: 'block' }}></canvas>
+                            <div className="absolute bottom-2 left-2 bg-white/90 p-2 rounded shadow text-xs font-semibold text-gray-800 pointer-events-none border border-gray-200">
+                                <h3 className="font-bold border-b border-gray-300 mb-1 pb-0.5">Steel Sheet Info</h3>
+                                <p>L: {steelSheetActualLength} mm | W: {steelSheetActualWidth} mm</p>
+                                <p>Area: {(steelSheetActualLength * steelSheetActualWidth).toLocaleString()} mm²</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const canvasRef = React.useRef(null);
+
+            const [overallLength, setOverallLength] = React.useState(1900);
+            const [overallWidth, setOverallWidth] = React.useState(1290);
+            const [blueSupportWidth, setBlueSupportWidth] = React.useState(100);
+            const [greenSheetWidth, setGreenSheetWidth] = React.useState(100);
+            const [redSquareSize, setRedSquareSize] = React.useState(100);
+            const [topRedSupportWidth, setTopRedSupportWidth] = React.useState(100);
+            const [topRedSupportHeight, setTopRedSupportHeight] = React.useState(100);
+            const [spacerBeamThickness, setSpacerBeamThickness] = React.useState(60);
+            const [spacerConfig, setSpacerConfig] = React.useState([600, 500]); 
+            const [gapFromFirstGreenBeamToBackPost, setGapFromFirstGreenBeamToBackPost] = React.useState(115);
+
+            const [steelSheetStartXOffset, setSteelSheetStartXOffset] = React.useState(200);
+            const [steelSheetActualLength, setSteelSheetActualLength] = React.useState(1500);
+            const [steelSheetActualWidth, setSteelSheetActualWidth] = React.useState(1320);
+            const [steelThickness, setSteelThickness] = React.useState(400);
+            const [unitWeightOfSteel, setUnitWeightOfSteel] = React.useState(77);
+
+            const [currentPage, setCurrentPage] = React.useState('input');
+            const [showSteelSheet, setShowSteelSheet] = React.useState(true);
+            const [tributaryData, setTributaryData] = React.useState({});
+            const [totalTributaryArea, setTotalTributaryArea] = React.useState(0);
+            const [totalPointLoad, setTotalPointLoad] = React.useState(0);
+            const [beamAnalysisData, setBeamAnalysisData] = React.useState(null);
+            const [calculatedTotalSheetLoad, setCalculatedTotalSheetLoad] = React.useState(0);
+            const [sumOfRestingPointLoads, setSumOfRestingPointLoads] = React.useState(0);
+            const [loadCalculationMode, setLoadCalculationMode] = React.useState('point_load');
+            const [supportCondition, setSupportCondition] = React.useState('simply-supported');
+            const [beamConfiguration, setBeamConfiguration] = React.useState('four-beams');
+                        
+            const [hasRearBeam, setHasRearBeam] = React.useState(false);
+            const [rearBeamOffset, setRearBeamOffset] = React.useState(150);
+            const [hasFrontBeam, setHasFrontBeam] = React.useState(false);
+            const [frontBeamOffset, setFrontBeamOffset] = React.useState(150);
+
+            const ALL_PROFILES = parseProfileData(rawSHSData);
+            const [selectedProfile, setSelectedProfile] = React.useState(ALL_PROFILES[0]);
+            const [selectedSpacerProfile, setSelectedSpacerProfile] = React.useState(ALL_PROFILES.find(p => p.name === 'SHS 60 x 60 x 5.0') || ALL_PROFILES[0]);
+
+            const [fy, setFy] = React.useState(355);
+            const [deadLoadFactor, setDeadLoadFactor] = React.useState(1.4);
+            const [liveLoadFactor, setLiveLoadFactor] = React.useState(1.6);
+            const EPSILON = 0.01;
+
+            const [isStorageDimensionsOpen, setIsStorageDimensionsOpen] = React.useState(true);
+            const [isStructuralComponentsOpen, setIsStructuralComponentsOpen] = React.useState(true);
+            const [isSpacerBeamConfigOpen, setIsSpacerBeamConfigOpen] = React.useState(true);
+            const [isSteelSheetPropertiesOpen, setIsSteelSheetPropertiesOpen] = React.useState(true);
+            const [isMaterialPropertiesOpen, setIsMaterialPropertiesOpen] = React.useState(true);
+
+            const [allBeamsLoadData, setAllBeamsLoadData] = React.useState([]);
+
+            const calculateBeamForces = React.useCallback((condition, span, pointLoads, udlData, factoredSelfWeightUDL_kN_m) => {
+                const spanM = span / 1000;
+                if (spanM <= 0) return { RA: 0, RB: 0, maxShear: 0, maxMoment: 0 };
+
+                if (condition === 'simply-supported') {
+                    let totalMomentAtA = 0, totalDownwardForce = 0;
+                    if (factoredSelfWeightUDL_kN_m > EPSILON) {
+                        totalMomentAtA += (factoredSelfWeightUDL_kN_m * spanM * spanM) / 2;
+                        totalDownwardForce += factoredSelfWeightUDL_kN_m * spanM;
+                    }
+                    pointLoads.forEach(pl => { totalMomentAtA += pl.load * (pl.x / 1000); totalDownwardForce += pl.load; });
+                    if (udlData && udlData.udl > EPSILON) {
+                        totalMomentAtA += udlData.udl * (udlData.length / 1000) * (udlData.startX / 1000 + udlData.length / 2000);
+                        totalDownwardForce += udlData.udl * (udlData.length / 1000);
+                    }
+
+                    const RB = totalMomentAtA / spanM, RA = totalDownwardForce - RB;
+                    let maxMoment = 0;
+
+                    for (let i = 0; i <= 1000; i++) {
+                        const x = (i / 1000) * spanM;
+                        let mx = RA * x;
+                        pointLoads.forEach(pl => { if (pl.x / 1000 < x) mx -= pl.load * (x - pl.x / 1000); });
+                        if (factoredSelfWeightUDL_kN_m > EPSILON) mx -= (factoredSelfWeightUDL_kN_m * x * x) / 2;
+                        if (udlData && udlData.udl > EPSILON) {
+                            const a = udlData.startX / 1000, end = a + udlData.length / 1000;
+                            if (x > a) mx -= x <= end ? (udlData.udl * (x - a) * (x - a)) / 2 : udlData.udl * (end - a) * (x - a - (end - a) / 2);
+                        }
+                        maxMoment = Math.max(maxMoment, Math.abs(mx));
+                    }
+                    return { RA, RB, maxShear: Math.max(Math.abs(RA), Math.abs(RB)), maxMoment };
+                } else { 
+                    let MA_fem = 0, MB_fem = 0;
+                    pointLoads.forEach(pl => {
+                        const a = pl.x / 1000, b = spanM - a;
+                        MA_fem -= (pl.load * a * b * b) / (spanM * spanM); MB_fem += (pl.load * a * a * b) / (spanM * spanM);
+                    });
+                    if (factoredSelfWeightUDL_kN_m > 0) {
+                        MA_fem -= (factoredSelfWeightUDL_kN_m * spanM * spanM) / 12; MB_fem += (factoredSelfWeightUDL_kN_m * spanM * spanM) / 12;
+                    }
+                    if (udlData && udlData.udl > 0) {
+                        const a = udlData.startX / 1000, b = a + udlData.length / 1000, sm2 = spanM * spanM;
+                        MA_fem -= (udlData.udl / (12 * sm2)) * (Math.pow(b, 2) * (6 * sm2 - 8 * spanM * b + 3 * b * b) - Math.pow(a, 2) * (6 * sm2 - 8 * spanM * a + 3 * a * a));
+                        MB_fem += (udlData.udl / (12 * sm2)) * (Math.pow(b, 3) * (4 * spanM - 3 * b) - Math.pow(a, 3) * (4 * spanM - 3 * a));
+                    }
+                    let R_A_simple = 0;
+                    pointLoads.forEach(pl => R_A_simple += pl.load * (spanM - pl.x/1000) / spanM);
+                    if (factoredSelfWeightUDL_kN_m > 0) R_A_simple += (factoredSelfWeightUDL_kN_m * spanM) / 2;
+                    if (udlData && udlData.udl > 0) R_A_simple += udlData.udl * (udlData.length / 1000) * (spanM - (udlData.startX / 1000 + udlData.length / 2000)) / spanM;
+                    
+                    const totalLoad = pointLoads.reduce((s, p) => s + p.load, 0) + (factoredSelfWeightUDL_kN_m * spanM) + ((udlData?.udl || 0) * (udlData?.length || 0) / 1000);
+                    const RA = R_A_simple - (MA_fem + MB_fem) / spanM, RB = totalLoad - RA;
+                    let maxMoment = 0;
+
+                    for (let i = 0; i <= 1000; i++) {
+                        const x = (i / 1000) * spanM;
+                        let mx = 0;
+                        pointLoads.forEach(pl => {
+                            const a = pl.x / 1000; if (a > spanM || a < 0) return;
+                            const b = spanM - a;
+                            mx += x <= a ? - (pl.load * b * b / (spanM ** 3)) * (a * spanM - (spanM + 2 * a) * x) : (pl.load * a * a / (spanM ** 3)) * (spanM * spanM + b * spanM - (spanM + 2 * b) * x);
+                        });
+                        if (factoredSelfWeightUDL_kN_m > 0) mx += (factoredSelfWeightUDL_kN_m / 12) * (6 * spanM * x - spanM * spanM - 6 * x * x);
+                        if (udlData && udlData.udl > 0) {
+                            const w = udlData.udl, a = udlData.startX / 1000, c = a + udlData.length / 1000, sm2 = spanM * spanM;
+                            const MA_udl = - (w / (12 * sm2)) * (Math.pow(c, 2) * (6 * sm2 - 8 * spanM * c + 3 * c * c) - Math.pow(a, 2) * (6 * sm2 - 8 * spanM * a + 3 * a * a));
+                            const MB_udl = + (w / (12 * sm2)) * (Math.pow(c, 3) * (4 * spanM - 3 * c) - Math.pow(a, 3) * (4 * spanM - 3 * a));
+                            const RA_fixed_udl = (w * (c - a) * (spanM - (a + c) / 2)) / spanM - (MA_udl + MB_udl) / spanM;
+                            mx += RA_fixed_udl * x + MA_udl;
+                            if (x > a) mx -= (w * (x-a)*(x-a)) / 2;
+                            if (x > c) mx += (w * (x-c)*(x-c)) / 2;
+                        }
+                        maxMoment = Math.max(maxMoment, Math.abs(mx));
+                    }
+                    return { RA, RB, maxShear: Math.max(Math.abs(RA), Math.abs(RB)), maxMoment };
+                }
+            }, [EPSILON]);
+
+            const drawPlan = React.useCallback((ctx, canvas, showAllDimensions, drawSteelSheetFlag, currentLoadCalculationMode, scaleModifier = 1.0) => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const axisLabelSpaceMM = 60; // Fixed reference error
+                const isBackstopZero = gapFromFirstGreenBeamToBackPost === 0;
+                let y_top_first_green_beam_mm = isBackstopZero ? 0 : redSquareSize;
+                let y_top_back_post_mm = isBackstopZero ? 0 : y_top_first_green_beam_mm - gapFromFirstGreenBeamToBackPost - topRedSupportHeight;
+                let sheetStartY_mm = isBackstopZero ? 0 : y_top_first_green_beam_mm - gapFromFirstGreenBeamToBackPost;
+
+                let cMinX = showAllDimensions ? -140 : 0;
+                let cMaxX = Math.max(overallLength, drawSteelSheetFlag ? steelSheetStartXOffset + steelSheetActualLength : 0) + (showAllDimensions ? 50 : 0);
+                let cMinY = Math.min(isBackstopZero ? 0 : y_top_back_post_mm, hasRearBeam ? -rearBeamOffset : 0) - (showAllDimensions ? 50 : 0);
+                let cMaxY = Math.max(overallWidth, hasFrontBeam ? overallWidth + frontBeamOffset + greenSheetWidth : overallWidth, drawSteelSheetFlag ? sheetStartY_mm + steelSheetActualWidth : 0) + (showAllDimensions ? 220 : 0);
+
+                let sf = Math.min((canvas.width / window.devicePixelRatio - 60) / (cMaxX - cMinX), (canvas.height / window.devicePixelRatio - 60) / (cMaxY - cMinY));
+                if (!isFinite(sf) || sf <= 0) sf = 0.05;
+                sf *= scaleModifier;
+
+                const sc = v => v * sf;
+                const scPL = sc(overallLength), scPW = sc(overallWidth), scBW = sc(blueSupportWidth), scGW = sc(greenSheetWidth), scRS = sc(redSquareSize);
+                const ty1G = sc(y_top_first_green_beam_mm), tyBP = sc(y_top_back_post_mm), sy = sc(sheetStartY_mm);
+
+                ctx.save();
+                ctx.translate((canvas.width / window.devicePixelRatio - (cMaxX - cMinX) * sf) / 2 - (cMinX * sf), (canvas.height / window.devicePixelRatio - (cMaxY - cMinY) * sf) / 2 - (cMinY * sf));
+
+                // Purple Outline
+                ctx.strokeStyle = 'purple'; ctx.lineWidth = 2 / window.devicePixelRatio;
+                ctx.strokeRect(0, 0, scPL, scPW);
+
+                // Blue supports
+                const minY_blue = hasRearBeam ? sc(-rearBeamOffset) : 0;
+                const maxY_blue = hasFrontBeam ? scPW + sc(frontBeamOffset) : scPW;
+                ctx.fillStyle = 'blue';
+                ctx.fillRect(0, minY_blue, scBW, maxY_blue - minY_blue); 
+                ctx.fillRect(scPL - scBW, minY_blue, scBW, maxY_blue - minY_blue);
+
+                // Green Beams
+                const activeBeams = [];
+                if (hasRearBeam) activeBeams.push({ name: "Rear Beam", y: sc(-rearBeamOffset) });
+                const fBP = { name: "Green 1", y: isBackstopZero ? 0 : ty1G };
+                const lBP = { name: "Green Last", y: scPW - (isBackstopZero ? 0 : scRS) - scGW };
+                
+                if (beamConfiguration === 'two-beams') activeBeams.push(fBP, { ...lBP, name: "Green 2" });
+                else if (beamConfiguration === 'three-beams') activeBeams.push(fBP, { name: "Green 2", y: (fBP.y + lBP.y) / 2 }, { ...lBP, name: "Green 3" });
+                else activeBeams.push(fBP, { name: "Green 2", y: fBP.y + (lBP.y - fBP.y) / 3 }, { name: "Green 3", y: fBP.y + 2 * (lBP.y - fBP.y) / 3 }, { ...lBP, name: "Green 4" });
+                if (hasFrontBeam) activeBeams.push({ name: "Front Beam", y: scPW + sc(frontBeamOffset) - scGW });
+
+                const drawCircledText = (text, x, y, bg = 'green', fg = 'white') => {
+                    const r = Math.max(10, 25 * sf) / 1.5;
+                    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2, true);
+                    ctx.strokeStyle = 'black'; ctx.lineWidth = 1 / window.devicePixelRatio; ctx.stroke();
+                    ctx.fillStyle = bg; ctx.fill();
+                    ctx.fillStyle = fg; ctx.font = `bold ${Math.max(10, 25 * sf)}px Inter, sans-serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, x, y);
+                };
+
+                ctx.fillStyle = 'green';
+                activeBeams.forEach((beam, i) => {
+                    ctx.fillRect(0, beam.y, scPL, scGW);
+                    let lbl = `${i + 1}`;
+                    if (hasRearBeam && i === 0) lbl = "R";
+                    else if (hasFrontBeam && i === activeBeams.length - 1) lbl = "F";
+                    drawCircledText(lbl, scBW + (scPL - scBW * 2) / 4, beam.y + scGW / 2);
+                    ctx.fillStyle = 'green';
+                });
+
+                // Red corner columns
+                if (!isBackstopZero) {
+                    ctx.fillStyle = 'red';
+                    ctx.fillRect(0, 0, scRS, scRS); ctx.fillRect(scPL - scRS, 0, scRS, scRS);
+                    ctx.fillRect(0, scPW - scRS, scRS, scRS); ctx.fillRect(scPL - scRS, scPW - scRS, scRS, scRS);
+                    const rpDist = sc(overallLength / 3), rW = sc(topRedSupportWidth);
+                    ctx.fillRect(scPL / 2 - rpDist / 2 - rW / 2, tyBP, rW, sc(topRedSupportHeight));
+                    ctx.fillRect(scPL / 2 + rpDist / 2 - rW / 2, tyBP, rW, sc(topRedSupportHeight));
+                }
+
+                // Spacers
+                const spacerBeamXCenters = [];
+                if (currentLoadCalculationMode === 'point_load') {
+                    let sStart = hasRearBeam ? activeBeams.find(b=>b.name==="Rear Beam").y : (isBackstopZero ? 0 : sy);
+                    let sEnd = hasFrontBeam ? activeBeams.find(b=>b.name==="Front Beam").y + scGW : scPW;
+                    ctx.fillStyle = 'orange';
+                    let cX = scBW;
+                    spacerConfig.forEach(spacing => {
+                        if (spacing > EPSILON) {
+                            cX += sc(spacing);
+                            ctx.fillRect(cX - sc(spacerBeamThickness) / 2, sStart, sc(spacerBeamThickness), sEnd - sStart);
+                            spacerBeamXCenters.push(cX);
+                        }
+                    });
+                    spacerBeamXCenters.forEach((x, i) => drawCircledText(`${i + 1}`, x, (sStart + sEnd) / 2, 'orange'));
+                }
+
+                // UDL & Point Loads
+                if (showAllDimensions && currentLoadCalculationMode === 'point_load') {
+                    spacerBeamXCenters.forEach((sX, sIdx) => {
+                        activeBeams.forEach(beam => {
+                            const iY = beam.y + scGW / 2;
+                            ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(sX, iY, sc(25), 0, Math.PI * 2, true); ctx.fill();
+                            const pLoad = tributaryData[`Spacer ${sIdx + 1}, ${beam.name}`]?.pointLoad || 0;
+                            const fs = Math.max(8, 16 * sf) * 2; ctx.font = `bold ${fs}px Inter`;
+                            const tw = ctx.measureText(`${pLoad.toFixed(2)} kN`).width, pad = sc(5);
+                            ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(sX + sc(30), iY - fs/2 - pad, tw + pad*2, fs + pad*2);
+                            ctx.fillStyle = 'white'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(`${pLoad.toFixed(2)} kN`, sX + sc(35), iY - fs/2);
+                        });
+                    });
+                } else if (currentLoadCalculationMode === 'udl') {
+                    activeBeams.forEach(beam => {
+                        const udl = tributaryData[beam.name]?.udl || 0; if (udl < EPSILON) return;
+                        const drawS = Math.max(blueSupportWidth, steelSheetStartXOffset);
+                        const drawL = Math.min(overallLength - blueSupportWidth, steelSheetStartXOffset + steelSheetActualLength) - drawS;
+                        if (drawL > 0) {
+                            const bY = beam.y + scGW / 2;
+                            ctx.fillStyle = 'rgba(255,0,0,0.5)'; ctx.fillRect(sc(drawS), beam.y, sc(drawL), scGW);
+                            const text = `${udl.toFixed(4)} kN/m`, fs = Math.max(10, 25 * sf);
+                            ctx.font = `bold ${fs}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                            const tw = ctx.measureText(text).width, pad = sc(20), tx = scBW + (scPL - scBW * 2) / 2;
+                            ctx.fillStyle = 'green'; ctx.fillRect(tx - tw/2 - pad, bY - fs/2 - pad, tw + pad*2, fs + pad*2);
+                            ctx.fillStyle = 'white'; ctx.fillText(text, tx, bY);
+                            if (showAllDimensions) {
+                                ctx.fillStyle = 'black'; ctx.font = `bold ${Math.max(14, 24 * sf)}px Inter`; ctx.textBaseline = 'top';
+                                ctx.fillText(`${drawL.toFixed(0)} mm`, sc(drawS) + sc(drawL)/2, beam.y + scGW + sc(30));
+                            }
+                        }
+                    });
+                }
+
+                // Steel Sheet Dots
+                if (drawSteelSheetFlag) {
+                    const drawDot = (x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2, true); ctx.fill(); };
+                    ctx.fillStyle = 'red';
+                    const sX = sc(steelSheetStartXOffset), eX = sX + sc(steelSheetActualLength), eY = sy + sc(steelSheetActualWidth);
+                    [0,1].forEach(i => [0,1].forEach(j => drawDot(i?eX:sX, j?eY:sy, sc(10))));
+                    for(let i=0; i<=40; i++) { drawDot(sX + i*(sc(steelSheetActualLength)/40), sy, sc(5)); drawDot(sX + i*(sc(steelSheetActualLength)/40), eY, sc(5)); }
+                    for(let i=0; i<=20; i++) { drawDot(sX, sy + i*(sc(steelSheetActualWidth)/20), sc(5)); drawDot(eX, sy + i*(sc(steelSheetActualWidth)/20), sc(5)); }
+                }
+
+                // Dimensions
+                if (showAllDimensions) {
+                    ctx.fillStyle = 'black'; ctx.font = `bold ${Math.max(12, 16 * sf * 2.5)}px Inter, sans-serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(`${overallLength} mm`, scPL / 2, scPW + sc(axisLabelSpaceMM * 1.5) + (hasFrontBeam ? sc(frontBeamOffset) + sc(100) : 0));
+                    ctx.save(); ctx.translate(-sc(axisLabelSpaceMM * 1.5), scPW / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(`${overallWidth} mm`, 0, 0); ctx.restore();
+
+                    ctx.strokeStyle = 'gray'; ctx.lineWidth = 3 / window.devicePixelRatio; ctx.font = `${Math.max(10, 14 * sf * 2)}px Inter, sans-serif`;
+                    const axisY = scPW + sc(50) + (hasFrontBeam ? sc(frontBeamOffset) + scGW : 0);
+                    ctx.beginPath(); ctx.moveTo(0, axisY); ctx.lineTo(scPL, axisY); ctx.stroke(); ctx.fillText('X (mm)', scPL / 2, axisY + sc(40));
+                    ctx.beginPath(); ctx.moveTo(-sc(50), 0); ctx.lineTo(-sc(50), scPW); ctx.stroke();
+                    ctx.save(); ctx.translate(-sc(90), scPW / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('Y (mm)', 0, 0); ctx.restore();
+                    
+                    ctx.fillStyle = 'black'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'; ctx.fillText(`(0,0)`, sc(20), sc(20));
+                    ctx.textAlign = 'right'; ctx.fillText(`(${overallLength},0)`, scPL - sc(20), sc(20));
+                    ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText(`(0,${overallWidth})`, sc(20), scPW - sc(20));
+                    ctx.textAlign = 'right'; ctx.fillText(`(${overallLength},${overallWidth})`, scPL - sc(20), scPW - sc(20));
+
+                    if (currentLoadCalculationMode === 'point_load') {
+                        ctx.font = `bold ${Math.max(10, 16 * sf * 2.2)}px Inter`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                        let lastX = scBW;
+                        spacerConfig.forEach((spc, idx) => {
+                            if (spc > EPSILON) {
+                                const cX = lastX + sc(spc);
+                                ctx.fillText(`${spc} mm`, lastX + sc(spc)/2, axisY + sc(80));
+                                ctx.strokeStyle = '#a0a0a0'; ctx.beginPath(); ctx.moveTo(lastX, axisY + sc(60)); ctx.lineTo(cX, axisY + sc(60)); ctx.stroke();
+                                ctx.beginPath(); ctx.moveTo(lastX, axisY + sc(50)); ctx.lineTo(lastX, axisY + sc(70)); ctx.moveTo(cX, axisY + sc(50)); ctx.lineTo(cX, axisY + sc(70)); ctx.stroke();
+                                lastX = cX;
+                            }
+                        });
+                    }
+                    if (drawSteelSheetFlag) {
+                        ctx.textBaseline = 'bottom'; ctx.fillText(`${steelSheetActualLength} mm`, sc(steelSheetStartXOffset) + sc(steelSheetActualLength) / 2, tyBP - sc(60));
+                        ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.save();
+                        ctx.translate(sc(steelSheetStartXOffset) - sc(140), sy + sc(steelSheetActualWidth) / 2); ctx.rotate(-Math.PI / 2);
+                        ctx.fillText(`${steelSheetActualWidth} mm`, 0, 0); ctx.restore();
+                    }
+                }
+                ctx.restore(); 
+            }, [overallLength, overallWidth, blueSupportWidth, greenSheetWidth, redSquareSize, topRedSupportWidth, topRedSupportHeight, spacerBeamThickness, spacerConfig, gapFromFirstGreenBeamToBackPost, steelSheetStartXOffset, steelSheetActualLength, steelSheetActualWidth, beamConfiguration, tributaryData, EPSILON, hasRearBeam, rearBeamOffset, hasFrontBeam, frontBeamOffset]);
+
+            React.useEffect(() => {
+                const isBackstopZero = gapFromFirstGreenBeamToBackPost === 0;
+                let sy_mm = isBackstopZero ? 0 : redSquareSize - gapFromFirstGreenBeamToBackPost;
+                const spanM = overallLength - blueSupportWidth;
+
+                let sy_g = isBackstopZero ? greenSheetWidth / 2 : redSquareSize + greenSheetWidth / 2;
+                let ey_g = isBackstopZero ? overallWidth - greenSheetWidth / 2 : overallWidth - redSquareSize - greenSheetWidth / 2;
+
+                let baseBeams = [];
+                if (beamConfiguration === 'two-beams') baseBeams = [{ name: 'Green 1', y: sy_g }, { name: 'Green 2', y: ey_g }];
+                else if (beamConfiguration === 'three-beams') baseBeams = [{ name: 'Green 1', y: sy_g }, { name: 'Green 2', y: (sy_g + ey_g) / 2 }, { name: 'Green 3', y: ey_g }];
+                else baseBeams = [{ name: 'Green 1', y: sy_g }, { name: 'Green 2', y: sy_g + (ey_g - sy_g) / 3 }, { name: 'Green 3', y: sy_g + 2 * (ey_g - sy_g) / 3 }, { name: 'Green 4', y: ey_g }];
+
+                let activeBeams = [...baseBeams];
+                if (hasRearBeam) activeBeams.unshift({ name: 'Rear Beam', y: -rearBeamOffset + greenSheetWidth / 2 });
+                if (hasFrontBeam) activeBeams.push({ name: 'Front Beam', y: overallWidth + frontBeamOffset - greenSheetWidth / 2 });
+                activeBeams.sort((a, b) => a.y - b.y);
+
+                const ssX = steelSheetStartXOffset, seX = ssX + steelSheetActualLength, seY = sy_mm + steelSheetActualWidth;
+
+                let curTribData = {}, totArea = 0, totLoad = 0, restingSum = 0;
+                                
+                if (loadCalculationMode === 'point_load') {
+                    const uX_mm = []; let cPos = blueSupportWidth;
+                    for (const spc of spacerConfig) { if (spc <= 0) break; cPos += spc; uX_mm.push(cPos); }
+                                        
+                    const rawTrib = {}, rawBLoads = {}; activeBeams.forEach(b => rawBLoads[b.name] = []);
+                    let sBY = hasRearBeam ? -rearBeamOffset : sy_mm;
+                    let eBY = hasFrontBeam ? overallWidth + frontBeamOffset : overallWidth;
+
+                    uX_mm.forEach((cX, sIdx) => {
+                        activeBeams.forEach((beam, gIdx) => {
+                            const key = `Spacer ${sIdx + 1}, ${beam.name}`;
+                            let xl = sIdx === 0 ? -Infinity : (uX_mm[sIdx - 1] + cX) / 2;
+                            let xr = sIdx === uX_mm.length - 1 ? Infinity : (cX + uX_mm[sIdx + 1]) / 2;
+                            let y_t = gIdx === 0 ? -Infinity : (activeBeams[gIdx - 1].y + beam.y) / 2;
+                            let y_b = gIdx === activeBeams.length - 1 ? Infinity : (beam.y + activeBeams[gIdx + 1].y) / 2;
+
+                            const area = Math.max(0, Math.min(xr, seX) - Math.max(xl, ssX)) * Math.max(0, Math.min(y_b, seY) - Math.max(y_t, sy_mm));
+                            const sheet_kN = (area * steelThickness * unitWeightOfSteel) / 1e9;
+                            
+                            let st_y = gIdx === 0 ? sBY : (activeBeams[gIdx - 1].y + beam.y) / 2;
+                            let sb_y = gIdx === activeBeams.length - 1 ? eBY : (beam.y + activeBeams[gIdx + 1].y) / 2;
+                            const spacer_kN = selectedSpacerProfile?.massPerMeter ? (Math.max(0, sb_y - st_y) / 1000) * (selectedSpacerProfile.massPerMeter * 0.00981) : 0;
+
+                            rawTrib[key] = { area, sheetPointLoad: sheet_kN, spacerPointLoad: spacer_kN };
+                            totArea += area; totLoad += (sheet_kN + spacer_kN);
+                            rawBLoads[beam.name].push({ x_global_mm: cX, x_relative: cX - blueSupportWidth, sheet_load: sheet_kN, spacer_load: spacer_kN, load: sheet_kN + spacer_kN, key });
+                        });
+                    });
+
+                    const redisBLoads = {}, finTrib = {};
+                    activeBeams.forEach(beam => { redisBLoads[beam.name] = []; });
+
+                    activeBeams.forEach(beam => {
+                        const bName = beam.name, curBLoads = rawBLoads[bName].map(l => ({ x: l.x_relative, sheet_load: l.sheet_load, spacer_load: l.spacer_load, load: l.load, key: l.key }));
+                        const touching = [];
+                        curBLoads.forEach((pt, idx) => {
+                            const raw = rawBLoads[bName][idx];
+                            if (ssX < raw.x_global_mm + spacerBeamThickness/2 - EPSILON && seX > raw.x_global_mm - spacerBeamThickness/2 + EPSILON) touching.push(idx);
+                        });
+
+                        if (touching.length > 0) {
+                            curBLoads.forEach((pt, sIdx) => {
+                                if (!touching.includes(sIdx) && pt.sheet_load > EPSILON) {
+                                    let near = touching[0], minDist = Math.abs(rawBLoads[bName][sIdx].x_global_mm - rawBLoads[bName][near].x_global_mm);
+                                    for (let i=1; i<touching.length; i++) {
+                                        const dist = Math.abs(rawBLoads[bName][sIdx].x_global_mm - rawBLoads[bName][touching[i]].x_global_mm);
+                                        if (dist < minDist) { minDist = dist; near = touching[i]; }
+                                    }
+                                    curBLoads[near].sheet_load += pt.sheet_load; pt.sheet_load = 0;
+                                }
+                            });
+                        } else {
+                            let totUnassigned = 0;
+                            curBLoads.forEach(pt => { totUnassigned += pt.sheet_load; pt.sheet_load = 0; });
+                            if (curBLoads.length > 0) curBLoads[0].sheet_load += totUnassigned;
+                        }
+
+                        curBLoads.forEach(pt => {
+                            pt.load = pt.sheet_load + pt.spacer_load;
+                            finTrib[pt.key] = { area: rawTrib[pt.key].area, sheetPointLoad: pt.sheet_load, spacerPointLoad: pt.spacer_load, pointLoad: pt.load };
+                            redisBLoads[bName].push({ x: pt.x, load: pt.load, sheet_load: pt.sheet_load, spacer_load: pt.spacer_load, key: pt.key });
+                            if (pt.sheet_load > EPSILON) restingSum += pt.sheet_load;
+                        });
+                    });
+                                        
+                    curTribData = finTrib;
+                    const newAllData = Object.entries(redisBLoads).map(([n, loads]) => ({ name: n, loads, udl: null, span: spanM }));
+                    setAllBeamsLoadData(newAllData);
+
+                    let maxM = -1, critB = '';
+                    Object.entries(redisBLoads).forEach(([n, loads]) => {
+                        const { maxMoment } = calculateBeamForces(supportCondition, spanM, loads.map(l => ({ ...l, x: l.x + blueSupportWidth/2 })), null, 0);
+                        if (maxMoment > maxM) { maxM = maxMoment; critB = n; }
+                    });
+                    setBeamAnalysisData({ criticalBeamName: critB, maxLoad: 0, criticalBeamLoads: [], criticalBeamSpan: spanM, mode: 'point_load' });
+                } else { 
+                    const initUdl = {}, allBWEdges = activeBeams.map(b => ({ ...b, topEdge: b.y - greenSheetWidth/2, bottomEdge: b.y + greenSheetWidth/2 }));
+                    const contBeams = allBWEdges.filter(b => seY > b.topEdge && sy_mm < b.bottomEdge);
+
+                    activeBeams.forEach((beam) => {
+                        let tW_mm = 0;
+                        if (contBeams.some(cb => cb.name === beam.name)) {
+                            const cIdx = contBeams.findIndex(cb => cb.name === beam.name);
+                            const yt = cIdx === 0 ? -Infinity : (contBeams[cIdx - 1].y + beam.y) / 2;
+                            const yb = cIdx === contBeams.length - 1 ? Infinity : (beam.y + contBeams[cIdx + 1].y) / 2;
+                            tW_mm = Math.max(0, Math.min(yb, seY) - Math.max(yt, sy_mm));
+                        }
+                        const uLen = Math.max(0, Math.min(seX, overallLength - blueSupportWidth) - Math.max(ssX, blueSupportWidth));
+                        const tArea = tW_mm * uLen, tLoad = (tArea * steelThickness * unitWeightOfSteel) / 1e9;
+                        initUdl[beam.name] = { area: tArea, totalLoad: tLoad, udl: uLen > EPSILON ? (tLoad / uLen) * 1000 : 0, startX: Math.max(ssX, blueSupportWidth) - blueSupportWidth/2, length: uLen };
+                    });
+
+                    curTribData = initUdl;
+                    setAllBeamsLoadData(Object.entries(initUdl).map(([name, udl]) => ({ name, loads: [], udl, span: spanM })));
+                    let maxM = -1, critB = '';
+                    Object.entries(initUdl).forEach(([name, udl]) => {
+                        const { maxMoment } = calculateBeamForces(supportCondition, spanM, [], udl, 0);
+                        if(maxMoment > maxM) { maxM = maxMoment; critB = name; }
+                    });
+                    setBeamAnalysisData({ criticalBeamName: critB, maxLoad: 0, criticalBeamLoads: [], criticalBeamUDL: null, criticalBeamSpan: spanM, mode: 'udl' });
+                }
+
+                setTributaryData(curTribData);
+                setTotalTributaryArea(Object.values(curTribData).reduce((s, d) => s + (d.area || 0), 0));
+                setTotalPointLoad(Object.values(curTribData).reduce((s, d) => s + (d.pointLoad || d.totalLoad || 0), 0));
+                setSumOfRestingPointLoads(restingSum);
+                setCalculatedTotalSheetLoad(((steelSheetActualLength * steelSheetActualWidth * steelThickness) / 1e9) * unitWeightOfSteel);
+            }, [overallLength, overallWidth, blueSupportWidth, greenSheetWidth, redSquareSize, spacerBeamThickness, spacerConfig, gapFromFirstGreenBeamToBackPost, steelSheetStartXOffset, steelSheetActualLength, steelSheetActualWidth, steelThickness, unitWeightOfSteel, loadCalculationMode, beamConfiguration, supportCondition, calculateBeamForces, EPSILON, hasRearBeam, rearBeamOffset, hasFrontBeam, frontBeamOffset, selectedSpacerProfile]);
+
+            const calculateBeamDeflection = React.useCallback((condition, spanL_mm, pointLoads_kN, udlData_kN_m, selfWeight_kN_m, E_MPa, I_cm4) => {
+                if (!E_MPa || !I_cm4 || !spanL_mm) return 0;
+                const EI = E_MPa * I_cm4 * 10000; if (EI === 0) return 0;
+                const macaulay = (val) => (val > 0 ? val : 0);
+                let maxD = 0, RA_pudl = 0, MA_pudl = 0, a_pudl = 0, c_pudl = 0, L = spanL_mm;
+
+                if (condition === 'fixed-supports' && udlData_kN_m && udlData_kN_m.udl > 0) {
+                    const w = udlData_kN_m.udl, a = udlData_kN_m.startX, c = a + udlData_kN_m.length, L2 = L * L;
+                    a_pudl = a; c_pudl = c;
+                    MA_pudl = -(w / (12 * L2)) * (Math.pow(L - a, 3) * (L + 3 * a) - Math.pow(L - c, 3) * (L + 3 * c));
+                    const MB = -(w / (12 * L2)) * (Math.pow(c, 3) * (4 * L - 3 * c) - Math.pow(a, 3) * (4 * L - 3 * a));
+                    RA_pudl = (w * (c - a) * (L - (a + c) / 2)) / L - (MA_pudl - MB) / L;
+                }
+
+                for (let i = 0; i <= 1000; i++) {
+                    const x = (i / 1000) * L; let tD = 0;
+                    if (condition === 'simply-supported') {
+                        if (selfWeight_kN_m > 0) tD += (selfWeight_kN_m * x * (L**3 - 2*L*x*x + x**3)) / (24 * EI);
+                        pointLoads_kN.forEach(pl => {
+                            const P = pl.load * 1000, a = pl.x, b = L - a;
+                            tD += x <= a ? (P * b * x) / (6 * EI * L) * (L*L - b*b - x*x) : (P * a * (L - x)) / (6 * EI * L) * (L*L - a*a - (L-x)**2);
+                        });
+                        if (udlData_kN_m && udlData_kN_m.udl > 0) {
+                            const w = udlData_kN_m.udl, a = udlData_kN_m.startX, c = a + udlData_kN_m.length;
+                            const RA = (w * (c - a) * (L - (a + c) / 2)) / L;
+                            const C1 = (1/L) * ((w/24) * (macaulay(L-a)**4 - macaulay(L-c)**4) - (RA * L**3 / 6));
+                            tD += (1/EI) * ((RA * x**3 / 6) - (w/24) * macaulay(x-a)**4 + (w/24) * macaulay(x-c)**4 + C1 * x);
+                        }
+                    } else {
+                        if (selfWeight_kN_m > 0) tD += (selfWeight_kN_m * x*x * (L-x)**2) / (24 * EI);
+                        if (udlData_kN_m && udlData_kN_m.udl > 0) tD += (RA_pudl * x**3 / (6*EI)) + (MA_pudl * x**2 / (2*EI)) - (udlData_kN_m.udl / (24*EI)) * macaulay(x-a_pudl)**4 + (udlData_kN_m.udl / (24*EI)) * macaulay(x-c_pudl)**4;
+                        pointLoads_kN.forEach(pl => {
+                            const P = pl.load * 1000, a = pl.x; if (a > L || a < 0) return;
+                            const b = L - a, RA = (P * b*b * (L + 2*a)) / L**3, MA = - (P * a * b*b) / L**2;
+                            tD += (RA * x**3 / (6*EI)) + (MA * x**2 / (2*EI)) - (P * macaulay(x-a)**3) / (6*EI);
+                        });
+                    }
+                    if (Math.abs(tD) > Math.abs(maxD)) maxD = tD;
+                }
+                return Math.abs(maxD);
+            }, []);
+
+            return (
+                <>
+                    {currentPage === 'landscape' && <LandscapeDrawingPage drawPlan={drawPlan} showSteelSheet={showSteelSheet} loadCalculationMode={loadCalculationMode} beamConfiguration={beamConfiguration} steelSheetActualLength={steelSheetActualLength} steelSheetActualWidth={steelSheetActualWidth} setCurrentPage={setCurrentPage} hasRearBeam={hasRearBeam} rearBeamOffset={rearBeamOffset} hasFrontBeam={hasFrontBeam} frontBeamOffset={frontBeamOffset} />}
+                    {currentPage === 'analysis' && <BeamAnalysisAndDesignPage allBeamsLoadData={allBeamsLoadData} selectedProfile={selectedProfile} setSelectedProfile={setSelectedProfile} ALL_PROFILES={ALL_PROFILES} liveLoadFactor={liveLoadFactor} setLiveLoadFactor={setLiveLoadFactor} deadLoadFactor={deadLoadFactor} setDeadLoadFactor={setDeadLoadFactor} fy={fy} setFy={setFy} calculateBeamForces={calculateBeamForces} steelThickness={steelThickness} setSteelThickness={setSteelThickness} supportCondition={supportCondition} blueSupportWidth={blueSupportWidth} setCurrentPage={setCurrentPage} EPSILON={EPSILON} calculateBeamDeflection={calculateBeamDeflection} />}
+                    {currentPage === 'input' && (
+                        <div className="min-h-screen bg-gray-100 flex flex-col p-4 font-sans antialiased">
+                            <div className="w-full bg-white p-4 rounded-lg shadow-md mb-4 flex flex-col space-y-2">
+                                <h2 className="text-xl font-bold text-gray-800 mb-2">Storage Plan Inputs (mm)</h2>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2 bg-gray-50 p-3 rounded-md border border-gray-200">
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold text-gray-700 uppercase mb-1 border-b pb-1">Beam Config</span>
+                                        <Radio label="Two Beams" name="bc" val="two-beams" current={beamConfiguration} set={setBeamConfiguration} />
+                                        <Radio label="Three Beams" name="bc" val="three-beams" current={beamConfiguration} set={setBeamConfiguration} />
+                                        <Radio label="Four Beams" name="bc" val="four-beams" current={beamConfiguration} set={setBeamConfiguration} color="red" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold text-gray-700 uppercase mb-1 border-b pb-1">Support Condition</span>
+                                        <Radio label="Simply Supported" name="sc" val="simply-supported" current={supportCondition} set={setSupportCondition} />
+                                        <Radio label="Fixed Supports" name="sc" val="fixed-supports" current={supportCondition} set={setSupportCondition} color="red" />
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs font-bold text-gray-700 uppercase mb-1 border-b pb-1">Load Mode</span>
+                                        <Radio label="Point Loads" name="lm" val="point_load" current={loadCalculationMode} set={setLoadCalculationMode} color="red" />
+                                        <Radio label="UDL (No Spacers)" name="lm" val="udl" current={loadCalculationMode} set={setLoadCalculationMode} />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="col-span-1 flex flex-col">
+                                        <CollapsibleSection title="Storage Area Dimensions" isOpen={isStorageDimensionsOpen} toggleOpen={setIsStorageDimensionsOpen}>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <Input label="Length (Outer):" title="Overall Length" val={overallLength} set={setOverallLength} />
+                                                <Input label="Width (Outer):" title="Overall Width" val={overallWidth} set={setOverallWidth} />
+                                            </div>
+                                        </CollapsibleSection>
+                                        <CollapsibleSection title="Structural Component Dimensions" isOpen={isStructuralComponentsOpen} toggleOpen={setIsStructuralComponentsOpen}>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <Input label="Main Frame Width:" val={blueSupportWidth} set={setBlueSupportWidth} />
+                                                <Input label="Spacer Supp. Beam Width:" val={greenSheetWidth} set={setGreenSheetWidth} />
+                                                <Input label="Corner Col Size:" val={redSquareSize} set={setRedSquareSize} />
+                                                <Input label="Vert Post Thickness:" val={topRedSupportWidth} set={setTopRedSupportWidth} />
+                                                <Input label="Back Post Height:" val={topRedSupportHeight} set={setTopRedSupportHeight} />
+                                                <div className="col-span-2 grid grid-cols-2 gap-3 border-t pt-2 mt-1">
+                                                    <div>
+                                                        <Checkbox label="Add Rear Beam" checked={hasRearBeam} set={setHasRearBeam} />
+                                                        {hasRearBeam && <div className="mt-1"><Input title="Offset from Y=0" val={rearBeamOffset} set={setRearBeamOffset} ph="Offset" /></div>}
+                                                    </div>
+                                                    <div>
+                                                        <Checkbox label="Add Front Beam" checked={hasFrontBeam} set={setHasFrontBeam} />
+                                                        {hasFrontBeam && <div className="mt-1"><Input title="Offset from Width" val={frontBeamOffset} set={setFrontBeamOffset} ph="Offset" /></div>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </CollapsibleSection>
+                                    </div>
+
+                                    <div className="col-span-1 flex flex-col">
+                                        <CollapsibleSection title="Steel Sheet Properties" isOpen={isSteelSheetPropertiesOpen} toggleOpen={setIsSteelSheetPropertiesOpen}>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <Input label="Sheet Start X-Offset:" val={steelSheetStartXOffset} set={setSteelSheetStartXOffset} />
+                                                <Input label="Sheet Length:" val={steelSheetActualLength} set={setSteelSheetActualLength} />
+                                                <Input label="Sheet Width:" val={steelSheetActualWidth} set={setSteelSheetActualWidth} />
+                                                <Input label="Back Stop Offset:" val={gapFromFirstGreenBeamToBackPost} set={setGapFromFirstGreenBeamToBackPost} />
+                                                <div className="col-span-2 border-t pt-2 mt-1"><Checkbox label="Show Steel Sheet" checked={showSteelSheet} set={setShowSteelSheet} /></div>
+                                            </div>
+                                        </CollapsibleSection>
+                                        <CollapsibleSection title="Steel Sheet Material Properties" isOpen={isMaterialPropertiesOpen} toggleOpen={setIsMaterialPropertiesOpen}>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <Input label="Sheet Thickness (mm):" val={steelThickness} set={setSteelThickness} step="0.1" min="0.1" />
+                                                <Input label="Unit Weight (kN/m³):" val={unitWeightOfSteel} set={setUnitWeightOfSteel} step="0.1" min="0.1" />
+                                            </div>
+                                        </CollapsibleSection>
+                                        {loadCalculationMode === 'point_load' && (
+                                            <CollapsibleSection title="Spacer Beam Configuration" isOpen={isSpacerBeamConfigOpen} toggleOpen={setIsSpacerBeamConfigOpen}>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <div className="flex flex-col col-span-2 sm:col-span-1">
+                                                        <label className="text-xs font-medium text-gray-700 truncate">Spacer Profile:</label>
+                                                        <select value={selectedSpacerProfile.name} onChange={e => setSelectedSpacerProfile(ALL_PROFILES.find(p => p.name === e.target.value))} className="p-1.5 text-sm border rounded focus:ring-blue-500">
+                                                            {ALL_PROFILES.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex flex-col col-span-2 sm:col-span-1"><Input label="Thickness:" val={spacerBeamThickness} set={setSpacerBeamThickness} /></div>
+                                                    {spacerConfig.map((spacing, i) => (
+                                                        <div className="flex flex-col" key={i}>
+                                                            <Input label={i===0?'First X-Offset:':`Spacing ${i} (C-C):`} val={spacing} set={v => { const n = [...spacerConfig]; n[i] = v; setSpacerConfig(n); }} />
+                                                        </div>
+                                                    ))}
+                                                    <div className="col-span-2 flex space-x-2 mt-1">
+                                                        <button onClick={() => setSpacerConfig([...spacerConfig, 0])} className="px-2 py-1 bg-green-500 text-white text-xs rounded">Add Spacer</button>
+                                                        <button onClick={() => { if(spacerConfig.length>1) setSpacerConfig(spacerConfig.slice(0,-1)); }} className="px-2 py-1 bg-red-500 text-white text-xs rounded">Remove Last Spacer</button>
+                                                    </div>
+                                                </div>
+                                            </CollapsibleSection>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                    <button onClick={() => { const c = canvasRef.current; if (c) drawPlan(c.getContext('2d'), c, false, showSteelSheet, loadCalculationMode); }} className="flex-1 py-2 px-3 bg-blue-600 text-white text-sm font-semibold rounded hover:bg-blue-700">Update Plan</button>
+                                    <button onClick={() => setCurrentPage('landscape')} className="flex-1 py-2 px-3 bg-green-600 text-white text-sm font-semibold rounded hover:bg-green-700">Landscape Drawing</button>
+                                    <button onClick={() => setCurrentPage('analysis')} className="flex-1 py-2 px-3 bg-purple-600 text-white text-sm font-semibold rounded hover:bg-purple-700">Analyze Beams</button>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col lg:flex-row w-full lg:flex-1 mt-4 lg:mt-0">
+                                <div className="lg:w-2/3 bg-white p-4 rounded-lg shadow-md flex items-center justify-center min-h-[400px] lg:min-h-full relative overflow-hidden">
+                                    <canvas ref={canvasRef} className="border border-gray-300 rounded-md max-w-full max-h-full" style={{ width: '100%', height: '100%', display: 'block' }}></canvas>
+                                    {overallLength <= 0 || overallWidth <= 0 ? <div className="absolute inset-0 flex items-center justify-center bg-red-100 text-red-700 p-4">Please enter valid positive dimensions.</div> : null}
+                                </div>
+                                {Object.keys(tributaryData).length > 0 && (
+                                    <div className="lg:w-1/3 bg-white p-3 rounded-lg shadow-md text-sm font-semibold text-gray-800 max-h-full overflow-y-auto z-10 lg:ml-4 mt-4 lg:mt-0">
+                                        <h3 className="text-base font-bold mb-2 border-b pb-1">Tributary Areas & Loads</h3>
+                                        <ul className="text-xs">
+                                            {Object.entries(tributaryData).map(([key, d]) => (
+                                                <li key={key} className="py-1.5 border-b border-gray-100 last:border-0">
+                                                    <span className="text-gray-700 font-bold">{key}</span>
+                                                    {loadCalculationMode === 'point_load' ? (
+                                                        <div className="text-gray-600 mt-0.5">Area: {(d.area||0).toFixed(2)} mm²<br/>Sheet: {(d.sheetPointLoad||0).toFixed(4)} kN | Spacer: {(d.spacerPointLoad||0).toFixed(4)} kN<br/><span className="text-gray-900 font-bold">Total: {(d.pointLoad||0).toFixed(4)} kN</span></div>
+                                                    ) : (<div className="text-gray-600 mt-0.5">Area: {(d.area||0).toFixed(2)} mm² | UDL: {(d.udl||0).toFixed(4)} kN/m | Load: {(d.totalLoad||0).toFixed(4)} kN</div>)}
+                                                </li>
+                                            ))}
+                                            <li className="mt-2 pt-2 border-t border-gray-300"><strong>Total Area: {(totalTributaryArea || 0).toFixed(2)} mm²</strong></li>
+                                            <li className="mt-1"><strong>Total System Load: {(totalPointLoad || 0).toFixed(4)} kN</strong></li>
+                                        </ul>
+                                        <h3 className="text-base font-bold mb-2 mt-4 border-b pb-1">Sheet Load Summary</h3>
+                                        <ul className="space-y-1.5">
+                                            <li><strong>Total Load of Sheet: {((calculatedTotalSheetLoad * 1000) / 9.81).toFixed(2)} KG</strong></li>
+                                            {loadCalculationMode === 'point_load' && <li><strong>Sum of Point Loads on Resting Spacers: {(sumOfRestingPointLoads || 0).toFixed(4)} kN</strong></li>}
+                                            {beamAnalysisData?.criticalBeamName && <li className="font-bold text-blue-600 pt-2 border-t mt-2">Critical Beam for Bending: {beamAnalysisData.criticalBeamName}</li>}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </>
+            );
+        };
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
